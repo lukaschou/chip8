@@ -8,6 +8,7 @@
 #define NUM_V_REGS 16
 #define FONTSET_SIZE 80 
 #define PROG_START_ADDR 0x200
+#define DISPLAY_LEN 2048
 
 const static uint8_t fontset[FONTSET_SIZE] = {
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -33,12 +34,12 @@ typedef struct {
     uint8_t V[16];
     uint16_t I;
     uint16_t PC;
-    uint8_t display[2048];
+    uint8_t display[32][64];
 } chip8_t;
 
-int init(chip8_t *chip8, SDL_Window *window, SDL_Renderer *renderer);
-void cleanup();
+int init_sdl(SDL_Window *window, SDL_Renderer *renderer);
+void init_chip8(chip8_t *chip8);
 int load_program(char *path, chip8_t *chip8);
-void handle_instruction(uint16_t instruction);
+void handle_instruction(uint16_t instruction, chip8_t *chip8);
 
 #endif
