@@ -10,26 +10,38 @@ static void bye() {
     SDL_Quit();
 }
 
-int init_sdl(SDL_Window *win, SDL_Renderer *ren) {
-    if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO)) {
+int init_sdl(SDL_Window **win, SDL_Renderer **ren) {
+    SDL_Window *window = NULL;
+    SDL_Renderer *renderer = NULL;
+
+    if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) == false) {
         return -1;
     }
 
-    win = SDL_CreateWindow("Chip8", 640, 320, 0);
-    if (win == NULL) {
+    window = SDL_CreateWindow(
+            "Chip8",
+            PIXEL_SIZE * DISPLAY_WIDTH,
+            PIXEL_SIZE * DISPLAY_HEIGHT,
+            0
+    );
+    if (window == NULL) {
         return -1;
     }
 
-    ren = SDL_CreateRenderer(win, NULL);
-    if (ren == NULL) {
+    renderer = SDL_CreateRenderer(window, NULL);
+    if (renderer == NULL) {
+        SDL_DestroyWindow(window);
         return -1;
     }
-
+    
+    *win = window;
+    *ren = renderer;
     return 0;
 }
 
 void init_chip8(chip8_t *chip8) {
-    chip8->PC = PROG_START_ADDR; // PC starts at x200
+    // Set PC to prog start
+    chip8->PC = PROG_START_ADDR;
     // Clear memory
     for (int i=0; i < MEM_SIZE; i++) {
         chip8->memory[i] = 0;
@@ -39,6 +51,8 @@ void init_chip8(chip8_t *chip8) {
         chip8->V[i] = 0;
     }
     chip8->I = 0;
+    // Make sure stack pointer is set to 0
+    chip8->stack.top = 0;
 } 
 
 int load_program(char *path, chip8_t *chip8) {
@@ -48,15 +62,13 @@ int load_program(char *path, chip8_t *chip8) {
         return -1;
     }
     
-    int maxBufLen = MEM_SIZE - 0x200 + 1;
-    uint8_t buffer[maxBufLen];
-    size_t len = fread(buffer, sizeof(u_int8_t), maxBufLen, source);
+    uint8_t buffer[MAX_PROG_LEN];
+    size_t len = fread(buffer, sizeof(uint8_t), MAX_PROG_LEN, source);
     if (ferror(source) != 0) {
         perror("fread");
         fclose(source);
         return -1;
     }
-
     fclose(source);
     
     for (int i = 0; i < len; i++) {
@@ -65,12 +77,24 @@ int load_program(char *path, chip8_t *chip8) {
     return 0;
 }
 
-void print_display(chip8_t *chip8) {
-    for (int y = 0; y < 32; y++) {
-        for (int x = 0; x < 64; x++) {
-            putchar(chip8->display[y][x] ? '*' : ' ');
+void draw(chip8_t *chip8, SDL_Renderer *renderer) {
+    for (int row=0; row < DISPLAY_HEIGHT; row++) {
+        for (int col=0; col < DISPLAY_WIDTH; col++) {
+            if (chip8->display[row][col]) {
+                SDL_FRect pixel;
+                pixel.x = col * PIXEL_SIZE;
+                pixel.y = row * PIXEL_SIZE;
+                pixel.w = PIXEL_SIZE;
+                pixel.h = PIXEL_SIZE;
+                if (SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255) == false) {
+                    fprintf(stderr, "Warning: Failed to set pixel draw color: %s\n", SDL_GetError());
+                }
+
+                if (SDL_RenderFillRect(renderer, &pixel) == false) {
+                    fprintf(stderr, "Warning: Failed to draw pixel: %s\n", SDL_GetError());
+                }
+            }
         }
-        putchar('\n');
     }
 }
 
@@ -84,60 +108,136 @@ void handle_instruction(uint16_t instruction, chip8_t *chip8) {
  
     switch (f) {
         case 0x0:
-            if (nnn == 0x0E0) {
-                // Clear screen
-                printf("Clearing screen...\n");
-                for (int y=0; y < 32; y++) {
-                    for (int x=0; x < 64; x++) {
-                        chip8->display[y][x] = 0; 
+            switch (nnn) {
+                case 0x0E0:
+                    // Clear screen
+                    for (int y=0; y < DISPLAY_HEIGHT; y++) {
+                        for (int x=0; x < DISPLAY_WIDTH; x++) {
+                            chip8->display[y][x] = 0; 
+                        }
                     }
-                }
+                    break;
+                case 0x0EE:
+                    // Return from subroutine
+                    chip8->PC = chip8->stack.stack[chip8->stack.top];
+                    chip8->stack.top--;
+                    break;
             }
+
             break;
         case 0x1:
             // Jump
-            // printf("Jumping to address %x...\n", nnn);
             chip8->PC = nnn;
+            break;
+        case 0x2:
+            // Call subroutine
+            chip8->stack.top++;
+            chip8->stack.stack[chip8->stack.top] = chip8->PC;
+            chip8->PC = nnn;
+            break;
+        case 0x3:
+            if (chip8->V[x] == nn) {
+                chip8->PC += 2;
+            }
+            break;
+        case 0x4:
+            if (chip8->V[x] != nn) {
+                chip8->PC += 2;
+            }
+            break;
+        case 0x5:
+            if (chip8->V[x] == chip8->V[y]) {
+                chip8->PC += 2;
+            }
             break;
         case 0x6:
             // Set register VX
-            printf("Setting register %x to %x...\n", x, nn);
             chip8->V[x] = nn;
             break;
         case 0x7:
             // Add value to register VX
-            printf("Adding %x to regist %x...\n", x, nn);
             chip8->V[x] += nn;
+            break;
+        case 0x8:
+            switch (n) {
+                case 0x0:
+                    chip8->V[x] = chip8->V[y];
+                    break;
+                case 0x1:
+                    chip8->V[x] |= chip8->V[y];
+                    break;
+                case 0x2:
+                    chip8->V[x] &= chip8->V[y];
+                    break;
+                case 0x3:
+                    chip8->V[x] ^= chip8->V[y];
+                    break;
+                case 0x4:
+                    {}
+                    int sum = chip8->V[x] + chip8->V[y];
+                    if (sum > 255) {
+                        chip8->V[0xF] = 1;
+                    }
+                    chip8->V[x] = sum;
+                    break;
+                case 0x5:
+                    chip8->V[0xF] = 1;
+                    chip8->V[x] -= chip8->V[y];
+                    if (chip8->V[y] > chip8->V[x]) {
+                        chip8->V[0xF] = 0;
+                    }
+                    break;
+                case 0x6:
+                    chip8->V[0xF] = 0x01 & chip8->V[x];
+                    chip8->V[x] >>= 1;
+                    break;
+                case 0x7:
+                    chip8->V[0xF] = 1;
+                    chip8->V[x] = chip8->V[y] - chip8->V[x];
+                    if (chip8->V[x] > chip8->V[y]) {
+                        chip8->V[0xF] = 0;
+                    }
+                    break;
+                case 0xE:
+                    chip8->V[0xF] = (0x80 & chip8->V[x]) >> 4;
+                    chip8->V[x] <<= 1;
+                    break;
+            }
+            break;
+        case 0x9:
+            if (chip8->V[x] != chip8->V[y]) {
+                chip8->PC += 2;
+            }
             break;
         case 0xA:
             // Set index register I
-            printf("Setting index register I to %x...\n", nnn);
             chip8->I = nnn;
+            break;
+        case 0xB:
+            chip8->PC = chip8->V[0] + nnn;
+            break;
+        case 0xC:
+            chip8->V[x] = (rand() % 256) & nn;
             break;
         case 0xD:
             // Display/draw
+            {}
             uint8_t horizontal = chip8->V[x & 63];
             uint8_t vertical = chip8->V[y & 31];
             chip8->V[0xF] = 0;
-
-            printf("Drawing at position %x, %x...\n", horizontal, vertical);
             for (uint8_t i = 0; i < n; i++) {
                 if (vertical + i > 31) {
-                    printf("Pixel is below the screen, clipping...\n");
                     break;
                 }
 
                 uint8_t sprite = chip8->memory[chip8->I+i];
-                printf("Sprite %x: %x\n", i, sprite); 
                 int bit_index = 0;
                 while (bit_index < 8) {
                     if (horizontal + bit_index > 63) {
-                        printf("pixel is outside of screen, clipping...\n");
                         break;
                     } 
 
                     uint8_t bit = (sprite >> (7 - bit_index)) & 1;
-                    printf("Bit %x is %x\n", bit_index, bit);
                     if (bit & chip8->display[vertical+i][horizontal+bit_index]) {
                         chip8->V[0xF] = 1;
                     }
@@ -145,7 +245,29 @@ void handle_instruction(uint16_t instruction, chip8_t *chip8) {
                     bit_index++;
                 } 
             }
-            print_display(chip8);
+            break;
+        case 0xF:
+            switch(nn) {
+                case 0x1E:
+                    chip8->I += chip8->V[x];
+                    break;
+                case 0x33:
+                    chip8->memory[chip8->I] = chip8->V[x] / 100;
+                    chip8->memory[chip8->I + 1] = (chip8->V[x] % 100) / 10;
+                    chip8->memory[chip8->I + 2] = chip8->V[x] % 10;
+                    break;
+                case 0x55:
+                    for (int i=0; i <= x; i++) {
+                        chip8->memory[chip8->I + i] = chip8->V[i];
+                    }
+                    break;
+                case 0x65:
+                    for (int i=0; i <= x; i++) {
+                        chip8->V[i] = chip8->memory[chip8->I + i];
+                    }
+                    break;
+            }
+            break;
         }
     
     return;
@@ -153,18 +275,21 @@ void handle_instruction(uint16_t instruction, chip8_t *chip8) {
 
 int main(int argc, char *argv[]) {
     chip8_t chip8;
-    SDL_Window *window;
-    SDL_Renderer *renderer;
+    SDL_Window *window = NULL;
+    SDL_Renderer *renderer = NULL;
     
     if (argc != 2) {
         fprintf(stderr, "usage: chip8 [program]");
         return -1;
     }
+    
+    srand(time(NULL));
 
-    if (init_sdl(window, renderer) == -1) {
+    if (init_sdl(&window, &renderer) == -1) {
         fprintf(stderr, "Failed to initialize SDL: %s\n", SDL_GetError());
         exit(EXIT_FAILURE);
     }
+
     init_chip8(&chip8);
     
     if (load_program(argv[1], &chip8) == -1) {
@@ -182,14 +307,14 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
         // Fetch instruction
         uint16_t instruction = (chip8.memory[chip8.PC] << 8) | chip8.memory[chip8.PC + 1];
         chip8.PC += 2;
         // Decode instruction
         handle_instruction(instruction, &chip8);
-
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
+        draw(&chip8, renderer);
         SDL_RenderPresent(renderer);
     }
     return 0;
