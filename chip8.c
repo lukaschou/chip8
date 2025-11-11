@@ -105,7 +105,7 @@ void handle_instruction(uint16_t instruction, chip8_t *chip8) {
     uint8_t n = instruction & 0x000F;
     uint16_t x = (instruction & 0x0F00) >> 8;
     uint16_t y = (instruction & 0x00F0) >> 4;
- 
+
     switch (f) {
         case 0x0:
             switch (nnn) {
@@ -172,35 +172,52 @@ void handle_instruction(uint16_t instruction, chip8_t *chip8) {
                 case 0x3:
                     chip8->V[x] ^= chip8->V[y];
                     break;
-                case 0x4:
-                    {}
-                    int sum = chip8->V[x] + chip8->V[y];
-                    if (sum > 255) {
-                        chip8->V[0xF] = 1;
+                case 0x4: 
+                    {
+                        int sum = chip8->V[x] + chip8->V[y];
+                        chip8->V[x] = sum;
+                        if (sum > 255) {
+                            chip8->V[0xF] = 1;
+                        } else {
+                            chip8->V[0xF] = 0;
+                        }
                     }
-                    chip8->V[x] = sum;
                     break;
                 case 0x5:
-                    chip8->V[0xF] = 1;
-                    chip8->V[x] -= chip8->V[y];
-                    if (chip8->V[y] > chip8->V[x]) {
-                        chip8->V[0xF] = 0;
-                    }
+                    {
+                        int diff = chip8->V[x] - chip8->V[y];
+                        chip8->V[x] = diff;
+                        if (diff >= 0) {
+                            chip8->V[0xF] = 1;
+                        } else {
+                            chip8->V[0xF] = 0;
+                        }
+                    } 
                     break;
                 case 0x6:
-                    chip8->V[0xF] = 0x01 & chip8->V[x];
-                    chip8->V[x] >>= 1;
+                    {
+                        uint8_t bit = 0x01 & chip8->V[x];
+                        chip8->V[x] >>= 1;
+                        chip8->V[0xF] = bit;
+                    }
                     break;
                 case 0x7:
-                    chip8->V[0xF] = 1;
-                    chip8->V[x] = chip8->V[y] - chip8->V[x];
-                    if (chip8->V[x] > chip8->V[y]) {
-                        chip8->V[0xF] = 0;
+                    {
+                        int diff = chip8->V[y] - chip8->V[x];
+                        chip8->V[x] = diff;
+                        if (diff >= 0) {
+                            chip8->V[0xF] = 1;
+                        } else {
+                            chip8->V[0xF] = 0;
+                        }
                     }
                     break;
                 case 0xE:
-                    chip8->V[0xF] = (0x80 & chip8->V[x]) >> 4;
-                    chip8->V[x] <<= 1;
+                    {
+                        uint8_t bit = (0x80 & chip8->V[x]) >> 7;
+                        chip8->V[x] <<= 1;
+                        chip8->V[0xF] = bit;
+                    }
                     break;
             }
             break;
@@ -296,7 +313,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to load program %s\n", argv[1]);
         exit(EXIT_FAILURE);
     } 
-
+        
     int done = 0;
     while (!done) {
         SDL_Event event;
