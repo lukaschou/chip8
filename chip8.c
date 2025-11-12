@@ -1,10 +1,37 @@
 #include "chip8.h"
+#include "SDL3/SDL_scancode.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+
+const static SDL_Scancode keypad[16] = {
+    SDL_SCANCODE_X, SDL_SCANCODE_1, SDL_SCANCODE_2, SDL_SCANCODE_3,
+    SDL_SCANCODE_Q, SDL_SCANCODE_W, SDL_SCANCODE_E, SDL_SCANCODE_A,
+    SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_Z, SDL_SCANCODE_C,
+    SDL_SCANCODE_4, SDL_SCANCODE_R, SDL_SCANCODE_F, SDL_SCANCODE_V
+};
+
+const static uint8_t fontset[FONTSET_SIZE] = {
+    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+    0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+};
 
 static void bye() {
     SDL_Quit();
@@ -47,8 +74,12 @@ void init_chip8(chip8_t *chip8) {
         chip8->memory[i] = 0;
     }
     // Clear Registers
-    for (int i=0; i < NUM_V_REGS; i++) {
+    for (int i=0; i <= NUM_V_REGS; i++) {
         chip8->V[i] = 0;
+    }
+
+    for (int i=0; i <= 0xF; i++) {
+        chip8->keypad[i] = 0;
     }
     chip8->I = 0;
     // Make sure stack pointer is set to 0
@@ -263,6 +294,20 @@ void handle_instruction(uint16_t instruction, chip8_t *chip8) {
                 } 
             }
             break;
+        case 0xE:
+            switch (nn) {
+                case 0x9E:
+                    if (chip8->keypad[chip8->V[x]]) {
+                        chip8->PC += 2;
+                    }
+                    break;
+                case 0xA1:
+                    if (!(chip8->keypad[chip8->V[x]])) {
+                        chip8->PC += 2;
+                    }
+                    break;
+            break;
+            }
         case 0xF:
             switch(nn) {
                 case 0x1E:
@@ -283,11 +328,34 @@ void handle_instruction(uint16_t instruction, chip8_t *chip8) {
                         chip8->V[i] = chip8->memory[chip8->I + i];
                     }
                     break;
+                case 0x0A:
+                    {
+                        chip8->PC -= 2;
+                        for (int i = 0; i <= 0xF; i++) {
+                            if (chip8->keypad[i]) {
+                                chip8->V[x] = i;
+                                chip8->PC += 4;
+                                printf("Key: %d\n", i);
+                                break;   
+                            }
+                        }
+                    } 
+                    break;
             }
             break;
         }
     
     return;
+}
+
+int is_valid_scancode(SDL_Scancode sc) {
+    for (int i = 0; i < 16; i++) {
+        if (sc == keypad[i]) {
+            return i;
+        }
+    }
+    
+    return -1;
 }
 
 int main(int argc, char *argv[]) {
@@ -313,14 +381,33 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to load program %s\n", argv[1]);
         exit(EXIT_FAILURE);
     } 
-        
+
     int done = 0;
+    uint16_t keys = 0;
     while (!done) {
         SDL_Event event;
 
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
-                done = true;
+                done = 1;
+            }
+
+            if (event.type == SDL_EVENT_KEY_DOWN) {
+                for (int i = 0; i <= 0xF; i++) {
+                    if (keypad[i] == event.key.scancode) {
+                        chip8.keypad[i] = 1;
+                        break;
+                    }
+                } 
+            }
+
+            if (event.type == SDL_EVENT_KEY_UP) {
+                for (int i = 0; i <= 0xF; i++) {
+                    if (keypad[i] == event.key.scancode) {
+                        chip8.keypad[i] = 0;
+                        break;
+                    }
+                }
             }
         }
 
