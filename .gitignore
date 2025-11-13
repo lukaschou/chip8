@@ -3,5 +3,7 @@ build/
 tests/
 vendored/
 
+
 *.out
 *.o
+*.obj
