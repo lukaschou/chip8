@@ -41,7 +41,6 @@ typedef struct {
 int init_game(window *win);
 void init_chip8(chip8_t *chip8);
 int load_program(char *path, chip8_t *chip8);
-void handle_instruction(uint16_t instruction, chip8_t *chip8);
-int is_valid_scancode(SDL_Scancode sc);
+void execute_cycle(chip8_t *chip8);
 
 #endif

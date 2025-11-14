@@ -144,7 +144,11 @@ void draw(chip8_t *chip8, SDL_Renderer *renderer) {
 
 
 
-void handle_instruction(uint16_t instruction, chip8_t *chip8) {
+void execute_cycle(chip8_t *chip8) {
+    // Fetch instruction
+    uint16_t instruction = (chip8->memory[chip8->PC] << 8) | chip8->memory[chip8->PC + 1];
+    chip8->PC += 2;
+
     uint16_t first_nibble = (instruction & 0xF000) >> 12;
     uint16_t nnn = instruction & 0x0FFF;
     uint8_t nn = instruction & 0x00FF;
@@ -319,13 +323,13 @@ void handle_instruction(uint16_t instruction, chip8_t *chip8) {
             switch (nn) {
                 case 0x9E:
                     // Skip instruction if key in Vx is pressed
-                    if (chip8->keypad[chip8->V[x] & 0x01]) {
+                    if (chip8->keypad[chip8->V[x] & 0x0F]) {
                         chip8->PC += 2;
                     }
                     break;
                 case 0xA1:
                     // Skip instruction if key in Vx is not pressed
-                    if (!(chip8->keypad[chip8->V[x] & 0x01])) {
+                    if (!(chip8->keypad[chip8->V[x] & 0x0F])) {
                         chip8->PC += 2;
                     }
                     break;
@@ -358,7 +362,7 @@ void handle_instruction(uint16_t instruction, chip8_t *chip8) {
                     break;
                 case 0x29:
                     // Set I to the location of the sprite for the char in Vx
-                    chip8->I = (chip8->V[x] & 0x01) * 5;
+                    chip8->I = (chip8->V[x] & 0x0F) * 5;
                     break;
                 case 0x33:
                     // Stores BCD representation of Vx in I
@@ -402,7 +406,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to load program %s\n", argv[1]);
         exit(EXIT_FAILURE);
     } 
-    chip8.memory[0x1FF] = 1;
+
     int done = 0;
     while (!done) {
         SDL_Event event;
@@ -416,7 +420,6 @@ int main(int argc, char *argv[]) {
                 for (int i = 0; i <= 0xF; i++) {
                     if (keypad[i] == event.key.scancode) {
                         chip8.keypad[i] = 1;
-                        printf("Key: %d\n", i);
                         break;
                     }
                 } 
@@ -434,11 +437,7 @@ int main(int argc, char *argv[]) {
 
         SDL_SetRenderDrawColor(win.renderer, 0, 0, 0, 255);
         SDL_RenderClear(win.renderer);
-        // Fetch instruction
-        uint16_t instruction = (chip8.memory[chip8.PC] << 8) | chip8.memory[chip8.PC + 1];
-        chip8.PC += 2;
-        // Decode instruction
-        handle_instruction(instruction, &chip8);
+        execute_cycle(&chip8);
         draw(&chip8, win.renderer);
         SDL_RenderPresent(win.renderer);
     }
