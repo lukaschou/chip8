@@ -15,21 +15,30 @@
 #define STACK_SIZE 100
 
 typedef struct {
-    int top;
-    uint16_t stack[STACK_SIZE];
-} ch8stack_t;
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+} window;
 
 typedef struct {
+    // Program counter
+    uint16_t PC;
+    // Memory
     uint8_t memory[MEM_SIZE];
+    // Registers
     uint8_t V[NUM_V_REGS];
     uint16_t I;
-    uint16_t PC;
+    // Timers
+    uint8_t d_timer;
+    uint8_t s_timer;
+    // Stack
+    int SP;
+    uint16_t stack[STACK_SIZE];
+    // Hardware states
     uint8_t display[DISPLAY_HEIGHT][DISPLAY_WIDTH];
-    ch8stack_t stack;
     int keypad[16];
 } chip8_t;
 
-int init_sdl(SDL_Window **window, SDL_Renderer **renderer);
+int init_game(window *win);
 void init_chip8(chip8_t *chip8);
 int load_program(char *path, chip8_t *chip8);
 void handle_instruction(uint16_t instruction, chip8_t *chip8);
