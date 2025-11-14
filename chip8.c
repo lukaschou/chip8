@@ -86,6 +86,13 @@ void init_chip8(chip8_t *chip8) {
         chip8->V[i] = 0;
     }
     chip8->I = 0;
+
+    // Reset Display
+    for (int y=0; y < DISPLAY_HEIGHT; y++) {
+        for (int x=0; x < DISPLAY_WIDTH; x++) {
+            chip8->display[y][x] = 0;
+        }
+    }
     
     // Reset keypad
     for (int i=0; i <= 0xF; i++) {
@@ -309,8 +316,8 @@ void execute_cycle(chip8_t *chip8) {
                             break;
                         } 
                         
-                        uint8_t bit = sprite_byte & (1 << (7 - bit_index));
                         // Set VF if a pixel is turned off
+                        uint8_t bit = (sprite_byte >> (7-bit_index)) & 1;
                         if (bit & chip8->display[y_coord + row][x_coord + bit_index]) {
                             chip8->V[0xF] = 1;
                         }
@@ -406,7 +413,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to load program %s\n", argv[1]);
         exit(EXIT_FAILURE);
     } 
-
+    
+    unsigned int last_timer_tick = SDL_GetTicks();
+    unsigned int last_cpu_tick = SDL_GetTicks();
     int done = 0;
     while (!done) {
         SDL_Event event;
@@ -435,11 +444,27 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        SDL_SetRenderDrawColor(win.renderer, 0, 0, 0, 255);
-        SDL_RenderClear(win.renderer);
-        execute_cycle(&chip8);
-        draw(&chip8, win.renderer);
-        SDL_RenderPresent(win.renderer);
+        unsigned int now = SDL_GetTicks();
+        
+        if (now - last_cpu_tick >= 1000/500) {
+            last_cpu_tick = now;
+            execute_cycle(&chip8);
+        }
+
+        if (now - last_timer_tick >= 1000/60) {
+            last_timer_tick = now;
+            if (chip8.d_timer > 0) {
+                chip8.d_timer--;
+            }
+            if (chip8.s_timer > 0) {
+                chip8.s_timer--;
+            }
+
+            SDL_SetRenderDrawColor(win.renderer, 0, 0, 0, 255);
+            SDL_RenderClear(win.renderer);
+            draw(&chip8, win.renderer);
+            SDL_RenderPresent(win.renderer);
+        }
     }
     return 0;
 }
