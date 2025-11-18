@@ -36,6 +36,7 @@ typedef struct {
     // Hardware states
     uint8_t display[DISPLAY_HEIGHT][DISPLAY_WIDTH];
     int keypad[16];
+    int draw_flag;
 } chip8_t;
 
 int init_game(window *win);

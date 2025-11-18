@@ -88,6 +88,7 @@ void init_chip8(chip8_t *chip8) {
     chip8->I = 0;
 
     // Reset Display
+    chip8->draw_flag = 0;
     for (int y=0; y < DISPLAY_HEIGHT; y++) {
         for (int x=0; x < DISPLAY_WIDTH; x++) {
             chip8->display[y][x] = 0;
@@ -298,8 +299,7 @@ void execute_cycle(chip8_t *chip8) {
             // Set Vx to bitwise AND of nn and a random number
             chip8->V[x] = (rand() % 256) & nn;
             break;
-        case 0xD:
-            {   // Draw
+        case 0xD: {   // Draw
                 uint8_t x_coord = chip8->V[x] % DISPLAY_WIDTH;
                 uint8_t y_coord = chip8->V[y] % DISPLAY_HEIGHT;
                 chip8->V[0xF] = 0;
@@ -317,13 +317,16 @@ void execute_cycle(chip8_t *chip8) {
                         } 
                         
                         // Set VF if a pixel is turned off
-                        uint8_t bit = (sprite_byte >> (7-bit_index)) & 1;
-                        if (bit & chip8->display[y_coord + row][x_coord + bit_index]) {
-                            chip8->V[0xF] = 1;
+                        uint8_t bit = (sprite_byte & (0x80 >> bit_index)) != 0;
+                        if (bit) {
+                            if (chip8->display[y_coord + row][x_coord + bit_index]) {
+                                chip8->V[0xF] = 1;
+                            }
+                            chip8->display[y_coord + row][x_coord + bit_index] ^= 1;
                         }
-                        chip8->display[y_coord + row][x_coord + bit_index] ^= bit;
                     }  
                 }   
+                chip8->draw_flag = 1;
             } 
             break;
         case 0xE:
@@ -447,12 +450,12 @@ int main(int argc, char *argv[]) {
         unsigned int now = SDL_GetTicks();
         
         if (now - last_cpu_tick >= 1000/500) {
-            last_cpu_tick = now;
+            last_cpu_tick += (1000/500);
             execute_cycle(&chip8);
         }
 
         if (now - last_timer_tick >= 1000/60) {
-            last_timer_tick = now;
+            last_timer_tick += (1000/60);
             if (chip8.d_timer > 0) {
                 chip8.d_timer--;
             }
@@ -462,7 +465,10 @@ int main(int argc, char *argv[]) {
 
             SDL_SetRenderDrawColor(win.renderer, 0, 0, 0, 255);
             SDL_RenderClear(win.renderer);
+            //if (chip8.draw_flag) {
             draw(&chip8, win.renderer);
+              //  chip8.draw_flag = 0;
+            //}
             SDL_RenderPresent(win.renderer);
         }
     }
